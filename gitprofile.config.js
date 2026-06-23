@@ -7,7 +7,7 @@ const config = {
     limit: 0, // How many projects to display.
     exclude: {
       forks: true, // Forked projects will not be displayed if set to true.
-      projects: ['data', 'auroraarc', 'LaTeX', 'qubit-feature-analysis', 'Projects', 'CNNQCBM', 'CourseNBooks'], // These projects will not be displayed. example: ['my-project1', 'my-project2']
+      projects: ['stat451', 'data', 'auroraarc', 'LaTeX', 'qubit-feature-analysis', 'Projects', 'CNNQCBM', 'CourseNBooks'], // These projects will not be displayed. example: ['my-project1', 'my-project2']
     },
   },
   social: {
