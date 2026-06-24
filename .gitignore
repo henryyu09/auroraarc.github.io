@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.omo
+.opencode
+deprecated
+portfolio/.next
+portfolio/test-results
+opencode.json

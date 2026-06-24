@@ -1,0 +1,33 @@
+---
+title: "Breaking the Cycle: Reducing Recidivism in Iowa State Prisons"
+date: "2023-03"
+tags: ["Data Science", "R", "Statistics"]
+description: "Data-driven analysis of recidivism cycles and the impact of various factors on recidivism rates."
+links:
+  github: "https://github.com/AuroraArc"
+  paper: "https://www.soa.org/49c692/globalassets/assets/files/static-pages/research/arch/2023/arch-2023-2-breaking-the-cycle-reducing-recidivism.pdf"
+---
+
+## Summary
+
+A comprehensive statistical analysis of recidivism patterns in Iowa's prison system, identifying key risk factors and evaluating the effectiveness of intervention programs. Published in the Society of Actuaries ARCH 2023 proceedings.
+
+## Technical Approach
+
+Using longitudinal correctional data, we applied survival analysis (Cox proportional hazards models) and random forest classifiers to identify the most significant predictors of re-offense within 3 years of release.
+
+<Callout type="warning">
+Working with correctional data requires careful attention to bias — historical policing patterns can confound recidivism metrics.
+</Callout>
+
+## Results
+
+Key findings:
+- Educational programs reduced recidivism risk by approximately 22%
+- Employment assistance post-release was the single most impactful intervention
+- Risk scores from the model outperformed traditional assessment tools
+
+## Future Improvements
+
+- Incorporate more granular program participation data
+- Explore causal inference methods to better isolate program effects

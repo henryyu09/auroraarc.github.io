@@ -1,0 +1,57 @@
+---
+title: "QC-ML Hybrid for DFT Calculations in Proteins"
+date: "2024-03"
+tags: ["Quantum", "ML", "Python"]
+description: "Novel QC-ML hybrid model for accelerating DFT calculations using a graph-CNN like model with a QCBM."
+links:
+  github: "https://github.com/AuroraArc"
+---
+
+## Summary
+
+Proposed a novel QC-ML hybrid model for accelerating Density Functional Theory (DFT) calculations in large molecular systems using a graph-CNN architecture with a Quantum Circuit Born Machine (QCBM) as a feature extractor.
+
+## Problem & Constraints
+
+DFT calculations are the workhorse of computational chemistry but scale poorly with system size — O(N³) or worse in the number of electrons. For protein-scale systems, accurate DFT becomes computationally intractable. The challenge: can a hybrid quantum-classical model learn the DFT ground state energy from molecular structure alone?
+
+## Technical Approach
+
+The architecture uses a graph neural network to process molecular structure, with quantum circuit layers (QCBM) serving as powerful feature extractors in the latent space.
+
+<CodeBlock
+  filename="model.py"
+  language="python"
+  code={`
+import torch
+import torch.nn as nn
+from torch_geometric.nn import GCNConv
+
+class QCMLHybrid(nn.Module):
+    def __init__(self, input_dim=64, n_qubits=8):
+        super().__init__()
+        self.gcn = GCNConv(input_dim, 128)
+        self.qcbm = QuantumCircuitLayer(n_qubits)
+        self.regressor = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
+    
+    def forward(self, x, edge_index):
+        x = self.gcn(x, edge_index)
+        x = torch.relu(x)
+        x = self.qcbm(x)  # Quantum feature extraction
+        return self.regressor(x)
+  `}
+  collapse
+/>
+
+## Results
+
+The hybrid model achieved DFT-level accuracy on small peptides while reducing inference time by approximately 40% compared to running full DFT calculations.
+
+## Future Improvements
+
+- Scale testing to larger protein structures (100+ atoms)
+- Investigate different quantum circuit ansatze for optimal expressivity

@@ -1,0 +1,43 @@
+---
+title: "Analysis of Noise on Quantum Models"
+date: "2023-09"
+tags: ["Quantum", "Python"]
+description: "Analyzing the impact of noise on the accuracy of quantum models using quantum classifiers and noise models."
+links:
+  github: "https://github.com/AuroraArc"
+---
+
+## Summary
+
+This project systematically analyzed how different noise channels and noise levels affect the classification accuracy of quantum machine learning models, establishing noise thresholds for reliable quantum classification.
+
+## Technical Approach
+
+Variational quantum classifiers were trained on synthetic datasets under various IBM Qiskit noise models, including depolarizing, amplitude damping, and phase damping channels at multiple noise strengths.
+
+<CodeBlock
+  filename="noise_analysis.py"
+  language="python"
+  code={`
+from qiskit import Aer
+from qiskit.providers.aer import QasmSimulator
+from qiskit.providers.aer.noise import NoiseModel
+
+def analyze_noise_sensitivity(model, noise_levels):
+    results = []
+    for level in noise_levels:
+        noise_model = NoiseModel()
+        noise_model.add_all_qubit_quantum_error(
+            depolarizing_error(level, 1), ['u1', 'u2', 'u3']
+        )
+        backend = QasmSimulator(noise_model=noise_model)
+        accuracy = evaluate_on_backend(model, backend)
+        results.append((level, accuracy))
+    return results
+  `}
+  collapse
+/>
+
+## Results
+
+Classification accuracy degrades predictably with noise but remains above 80% for noise levels below specific thresholds, providing practical guidance for quantum ML deployment.

@@ -1,0 +1,34 @@
+---
+title: "Understanding Quantum Reservoir Computing"
+date: "2024-06"
+description: "A practical introduction to quantum reservoir computing, why it matters for near-term quantum devices, and what I learned implementing it on neutral-atom hardware."
+---
+
+## Why Reservoir Computing?
+
+Reservoir computing is a fascinating approach to recurrent neural networks that flips the usual training paradigm on its head. Instead of training all the weights in a recurrent network — which is notoriously difficult due to vanishing gradients and long training times — you fix the recurrent connections and only train a simple linear readout layer.
+
+The "reservoir" is a fixed, randomly initialized dynamical system. You feed inputs into it, let the dynamics evolve, and read out the system's state as a high-dimensional representation of your input. Because the reservoir is fixed, training is just linear regression or a simple classifier.
+
+## The Quantum Advantage
+
+Quantum reservoir computing (QRC) replaces the classical recurrent network with a quantum system — a set of interacting qubits whose dynamics are governed by quantum mechanics. The idea is that quantum systems can naturally explore an exponentially large Hilbert space, providing a richer feature space for classification.
+
+Where classical reservoirs need to be carefully designed to have the right dynamical properties (echo state property, enough nonlinearity), quantum reservoirs get this "for free" from quantum mechanics itself.
+
+## What I Built
+
+In collaboration with QuEra Computing, I built a QRC model using their neutral-atom quantum architecture. The key implementation steps:
+
+1. **Encoding**: Molecular features are encoded as initial Rydberg state populations of the atoms
+2. **Evolution**: The system evolves under its natural Hamiltonian for a fixed time
+3. **Measurement**: Final atomic states are measured, producing a feature vector
+4. **Classification**: A linear SVM is trained on these feature vectors
+
+## Key Lessons
+
+- **Interaction time matters**: Too short and the reservoir doesn't mix enough; too long and dynamics become chaotic
+- **Simulation vs hardware**: There's a meaningful gap (~5%) between simulated and hardware performance, highlighting the impact of noise
+- **Connectivity matters**: The neutral-atom topology (which differs from superconducting qubits) requires careful reservoir design
+
+This project gave me a deep appreciation for how algorithmic design must adapt to hardware constraints, and how quantum reservoir computing offers a practical path to quantum advantage on near-term devices.

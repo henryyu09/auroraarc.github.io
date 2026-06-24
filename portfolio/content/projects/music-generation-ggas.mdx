@@ -1,0 +1,51 @@
+---
+title: "Music Generation Using Genetic Algorithms"
+date: "2024-01"
+tags: ["AI", "Music", "Python"]
+description: "Implementing a music generation model using Genetic Algorithm (GGA) for evolving music sequences."
+links:
+  github: "https://github.com/AuroraArc"
+---
+
+## Summary
+
+This project uses Genetic Algorithms (specifically, Generational Genetic Algorithms) to evolve music sequences. Starting from random note populations, the algorithm iteratively applies selection, crossover, and mutation to produce increasingly structured and pleasing compositions.
+
+## Technical Approach
+
+Each individual in the population represents a melody as a sequence of (pitch, duration, rest) tuples. The fitness function evaluates melodic contour, harmonic consonance, and rhythmic variety.
+
+<CodeBlock
+  language="python"
+  filename="genetic_music.py"
+  code={`
+class MusicGA:
+    def __init__(self, pop_size=100):
+        self.population = [random_melody() for _ in range(pop_size)]
+    
+    def fitness(self, melody):
+        return (
+            contour_score(melody) * 0.3 +
+            consonance_score(melody) * 0.4 +
+            rhythm_score(melody) * 0.3
+        )
+    
+    def evolve(self, generations=500):
+        for gen in range(generations):
+            scored = [(m, self.fitness(m)) for m in self.population]
+            scored.sort(key=lambda x: -x[1])
+            parents = scored[:20]
+            offspring = []
+            for _ in range(80):
+                p1, p2 = random.sample(parents, 2)
+                child = crossover(p1[0], p2[0])
+                child = mutate(child)
+                offspring.append(child)
+            self.population = [p[0] for p in parents] + offspring
+  `}
+  collapse
+/>
+
+## Results
+
+The GA successfully evolved recognizable melodic structures from random noise within ~200 generations, producing sequences with coherent rhythmic patterns and tonal centers.
