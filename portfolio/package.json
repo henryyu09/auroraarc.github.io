@@ -12,13 +12,10 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@next/swc-darwin-arm64": "^16.2.9",
-    "@rollup/rollup-darwin-arm64": "^4.62.2",
     "chart.js": "^4.4.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "lightningcss": "^1.32.0",
-    "lightningcss-darwin-arm64": "^1.32.0",
     "mermaid": "^11.0.0",
     "next": "^15.2.0",
     "next-mdx-remote": "^5.0.0",
@@ -27,6 +24,11 @@
     "react-dom": "^19.1.0",
     "shiki": "^3.0.0",
     "tailwind-merge": "^3.0.0"
+  },
+  "optionalDependencies": {
+    "@next/swc-darwin-arm64": "^16.2.9",
+    "@rollup/rollup-darwin-arm64": "^4.62.2",
+    "lightningcss-darwin-arm64": "^1.32.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.0",
