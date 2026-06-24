@@ -32,6 +32,7 @@ export default async function ProjectPage({ params }: PageProps) {
 
   const { content } = await compileMDX({
     source: project.content,
+    options: { blockJS: false },
     components: mdxComponents,
   });
 
