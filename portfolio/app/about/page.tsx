@@ -54,8 +54,7 @@ export default function About() {
           href="/cv.pdf"
           download
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md text-small font-medium
-            bg-accent text-white hover:opacity-90 transition-all duration-200
-            shadow-sm hover:shadow-md hover:-translate-y-0.5"
+            bg-accent text-white! hover:opacity-90 transition-all duration-200"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
