@@ -22,7 +22,7 @@ export default function Hero() {
         <Link
           href="/projects"
           className="inline-flex items-center px-5 py-2.5 rounded-md text-small font-medium
-            bg-accent text-white hover:opacity-90 transition-all duration-200
+            bg-accent text-white! hover:opacity-90 transition-all duration-200
             shadow-sm hover:shadow-md hover:-translate-y-0.5"
         >
           View projects
