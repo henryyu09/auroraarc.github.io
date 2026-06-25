@@ -1,10 +1,13 @@
+import Image from "next/image";
 import Link from "next/link";
+import Description from "@/components/mdx/Description";
 
 interface ProjectCardProps {
   title: string;
   description: string;
   tags: string[];
   slug: string;
+  image?: string;
   result?: string;
   thumbnailColor?: string;
   large?: boolean;
@@ -15,6 +18,7 @@ export default function ProjectCard({
   description,
   tags,
   slug,
+  image,
   result,
   thumbnailColor = "#3A7D5C",
   large = false,
@@ -27,22 +31,34 @@ export default function ProjectCard({
         large ? "md:col-span-2" : ""
       }`}
     >
-      {/* Thumbnail placeholder */}
-      <div
-        className="w-full flex items-center justify-center"
-        style={{
-          height: large ? "240px" : "160px",
-          backgroundColor: thumbnailColor,
-          opacity: 0.15,
-        }}
-      >
-        <span
-          className="font-display text-heading"
-          style={{ color: thumbnailColor, opacity: 0.6 }}
+      {/* Thumbnail */}
+      {image ? (
+        <div className="relative w-full" style={{ height: large ? "240px" : "160px" }}>
+          <Image
+            src={image}
+            alt={`${title} thumbnail`}
+            fill
+            className="object-cover group-hover:scale-105 transition-transform duration-300"
+            sizes={large ? "(max-width: 768px) 100vw, 50vw" : "(max-width: 768px) 100vw, 33vw"}
+          />
+        </div>
+      ) : (
+        <div
+          className="w-full flex items-center justify-center"
+          style={{
+            height: large ? "240px" : "160px",
+            backgroundColor: thumbnailColor,
+            opacity: 0.15,
+          }}
         >
-          {title.charAt(0)}
-        </span>
-      </div>
+          <span
+            className="font-display text-heading"
+            style={{ color: thumbnailColor, opacity: 0.6 }}
+          >
+            {title.charAt(0)}
+          </span>
+        </div>
+      )}
 
       {/* Content */}
       <div className="p-5">
@@ -50,7 +66,7 @@ export default function ProjectCard({
           {title}
         </h3>
         <p className="text-small text-text-secondary mb-3 line-clamp-2">
-          {description}
+          <Description text={description} />
         </p>
 
         {/* Tags */}

@@ -1,41 +1,140 @@
 ---
 title: "Understanding the Influence of Qubit Features on Error Rates"
 date: "2023-06"
-tags: ["Quantum", "Data Science"]
-description: "Assessing correlations between qubit features and predicting error probability."
+tags: ["Quantum Computing", "Time-Series Analysis", "Python"]
+description: |
+  The goal of the project was to assess correlations between qubit features and ultimately predict error probability.
+  
+  *This is the first of two semesters of a solo research project conducted by me under the guidance of Dr. Nicholas LaRacuente* ([nlaracu@iu.edu](mailto:nlaracu@iu.edu)) *during the fall 2023 semester.*
+image: "/images/projects/qubit-features-error-rates.svg"
 links:
   github: "https://github.com/AuroraArc"
 ---
+
 
 ## Summary
 
 An empirical study assessing correlations between qubit-level features (T1, T2 coherence times, gate fidelity, readout error) and overall circuit error rates, building a predictive model for qubit quality.
 
-## Technical Approach
+## Introduction
+First, what is a quantum computer [1]? To put it simply, it is a computer that uses quantum bits (qubits) to process information. Two notable features of a quantum computer allow it to be much more powerful than a classical computer:
+* **Superposition**: allows the qubit to be in a state of one and zero simultaneously
+* **Entanglement**: "binds" a group fo qubits together; their individual states are dependent on each other, no matter how far they are from each other
 
-Using IBM Quantum hardware calibration data, we trained regression models to predict per-circuit error rates from qubit feature vectors.
+There are quite a few challenges that hinder quantum computing performance [2,3]:
+* It is extremely susceptible to noise, which can be defined as anything from ambient temperature to local radiation from Wi-Fi
+* Scalability is an issue; the largest processor was just unveiled by by IBM (as of Dec 2023): the 1,121-qubit Condor processor
+* This is a relatively new field of work. In 1998, the first 2-qubit computer was built
 
-<CodeBlock
-  language="python"
-  filename="qubit_analysis.py"
-  code={`
-import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
+There are many methods that try to solve, or mitigate, error, such as noise intermediate-scale quantum (NISQ) devices, quantum algorithm optimization, and error correction codes.
 
-# Calibration data from IBMQ backends
-data = pd.read_csv("qubit_calibration.csv")
-features = ["T1", "T2", "gate_fidelity", "readout_error"]
-X = data[features]
-y = data["circuit_error_rate"]
+Predicting gate error probability in the context of quantum computing involves estimating the likelihood of errors occurring during quantum gate operations. Some reasons why this is important in quantum computing methods:
+* Error correction strategies: understanding and predicting errors are essential for quantum error correction strategies as they rely on accurate estimates of error probabilities to detect and correct errors effectively
+* Hardware benchmarks: predicting quantum error probability aids in developing effective calibration protocols; this is mostly what this project is focused on
 
-model = RandomForestRegressor(n_estimators=100)
-model.fit(X, y)
+## Methods
+### Data Collection
+I utilized the Qiskit SDK [4], which provided access to IBM quantum computers. One 7-qubit processor and seven 127-qubit processors were utilized:
+* `ibm_perth`: a 7-qubit system based on the Falcon processor
+* `ibm_brisbane`, `ibm_cusco`, `ibm_kawasaki`, `ibm_kyoto`, `ibm_nazca`, `ibm_quebec`, `ibm_sherbrooke`: 127-qubit systems based on the Eagle processor
 
-# Feature importance
-importances = pd.Series(model.feature_importances_, index=features)
-  `}
-/>
+315 days of data were collected from each of the systems, then compiled into one dataset.
+
+### Qubit Features
+The following qubit features were conidered [5]:
+* decoherence time ($T_1$ and $T_2$)
+* frequency, anharmonicity
+* readout assignment error (`prob_meas0_prop1` and `prob_meas1_prop0`), readout length
+* gate time
+* Single-gate errors for `ID`, `rz`, `sx`, Pauli-X (`NOT` gate), reset, $\sqrt{x}$
+* Two-gate errors for controlled `NOT` (`CNOT`) gate error (exclusive to 7-qubit) and `ECR` (exclusive to 127-qubit)
+
+All features were scaled to have a standard devation of 1.
+
+### Time-Series Analysis of CNOT Gate Error on `ibm_perth` and ECR Gate Error on 127-qubit Systems
+Linear regression with L1 regularization was employed for its simplicity and feature selection capabilities [6].
+
+$$
+\min_{w} { \frac{1}{2n_{\text{samples}}} ||w - y||_2 ^ 2 + \alpha ||w||_1}
+$$
+
+where:
+* $n_{\text{samples}}$: number of samples
+* $X$: input features
+* $y$: target variable ($\{$`CNOT`,`ECR`$\}$)
+* $w$: coefficient vector
+* $\alpha ||w||_1$: L1 regularization
+
+Polynomial regression (quadratic order) was also utilized to capture nonlinear relationships [6].
+
 
 ## Results
+### CNOT Error Prediction
+The optimal regularization value was $\alpha=0.07$.
 
-Gate fidelity was the strongest predictor of circuit error rates, followed by T2 coherence time. The model achieved an R² of 0.74 on held-out test data.
+The $R^2$ was approximately $-1.252$, which means that the model actually performs worse than simply predicting the mean of the target variable every time. In other words, the qubit features we tracked don't encode enough temporal signal to beat a trivial baseline.
+
+The average RMSE score was approximately $4.319\times10^{-3}$, which sounds small, but this is because the error rates can only range in a very narrow numerical range. You need both the $R^2$ and RMSE together to understand whether the model is a good fit, not just RMSE alone.
+
+Based on the metrics, we can conclude that **qubit features over time are not predictive of gate error rate**. Perhaps a more complex model may capture more patterns, and the features may still carry some cross-sectional signal, but as it stands, the temporal variation in error rates appears to be driven by factors the calibration data doesn't capture.
+
+#### Correlation Matrix
+
+<Figure
+  src="/images/projects/corrmatrix.png"
+  alt="Correlation matrix of qubit features and error rates"
+  caption="Correlation matrix showing pairwise relationships between qubit-level features (T1, T2, gate fidelities, readout errors) and CNOT/ECR gate error rates."
+  expandable
+/>
+
+Some things to note are that the decoherence times ($T_1, T_2$) show a negative relationship across the other variables, and the anharmonicity values seem to be neutral across all variables. Most notably, the probability errors (`prob_meas0_prop1`, `prob_meas1_prop0`) and gate errors (Pauli-X, `ECR`) all show a slight relationship with each other.
+
+### ECR Error Prediction
+The optimal regularization value was $\alpha=0.11$.
+
+This time, the results were modest but somewhat meaningful. The $R^2$ was approximately $0.105$, which is weak, but a significant step up compared to the negative $R^2$ in the `CNOT` prediction. The cross-sectional features do carry some signal, but they only manage to explain about $10\%$ of the variance.
+
+The average RMSE score was $0.900$, which is much larger than before, especially when you consider that `ECR` error rates also span a very narrow range, so an RMSE of this magnitude indicates that the model's prediction are, on average, pretty far off relative to that range. 
+
+The poor RMSE despite a barely positive $R^2$ reinforces the same underlying story: the features we have access to from calibration data do not fully explain what determines gate error.
+
+#### ECR Plot
+
+<Figure
+  src="/images/projects/scatterplot.png"
+  alt="Scatterplot of Predicted ECR Error vs Actual ECR Error"
+  caption="Scatterplot depicting predicted ECR error vs. actual ECR error"
+  expandable
+/>
+
+The negative `ECR` error value is attributed to feature scaling, which is a common occurrence in regression models. From the graph, it is evident that there is massive variance observed in the prediction, which suggests a lack of predictive power in the model. Some of the variance could be explained by outliers, which could have influenced lower evaluation metrics. However, the overall trend of the data is still not captured by the model, which is evident from the low $R^2$ value.
+
+## Discussion
+The analysis of qubit features revealed weak predictive power for error rates, particularly when utilizing linear and low-order polynomial models. Despite this limitation, a stronger correlation was observed when using cross-sectional data, suggesting that while temporal variations in qubit features may not be informative, the overall state of the qubits at a given time could still provide some insight into error rates.
+
+A significant limitation of this study is the size of the dataset, especially for the 127-qubit systems, because IBM requires a subscription to access backends of many of their quantum systems, leaving us with only a handful of systems to analyze. Additionally, the features available from calibration data may not fully capture the underlying factors that influence gate error rates, indicating a need for more comprehensive data collection and feature engineering in future research.
+
+The dataset's potential inclusion of noise or inadequate cleaning processes adds another layer of complexity to the interpretation of the results. Ensuring data integrity is critical, and future work should focus on refining data preprocessing techniques to mitigate these issues.
+
+## Future Directions
+### Understanding Relationship Discrepancy
+Investigating the inconsistency between the correlation matrix and error coefficients should be a first priority in future research. Understanding the underlying reasons for this divergence may provide crucial insights into the factors influencing qubit error rates and help refine predictive models.
+
+### Mitigating Errors
+Despite the current limitations, the exploration of relationships between qubit features and error rates holds promise for mitigating errors in quantum computing. Future studies can build upon these findings, incorporating more extensive datasets, advanced modeling techniques, and additional qubit features to enhance predictive accuracy and contribute to the development of more robust quantum computing systems.
+
+## Conclusion
+In conclusion, while the present study reveals limitations in predictive power, it lays the groundwork for future investigations. Addressing these limitations and refining methodologies will be essential for advancing our understanding of the intricate relationships between qubit features and error rates in quantum computing.
+
+## References
+[1] “What Is Quantum Computing?” Caltech Science Exchange, [https://scienceexchange.caltech.edu/topics/quantum-science-explained/quantum-computing-computers](https://scienceexchange.caltech.edu/topics/quantum-science-explained/quantum-computing-computers).
+
+[2] Preskill, John. “Quantum Computing in the NISQ Era and Beyond.” Quantum, vol. 2, Aug. 2018, p.79. Crossref, [https://doi.org/10.22331/q-2018-08-06-79](https://doi.org/10.22331/q-2018-08-06-79).
+
+[3] Engdahl, Sylvia. “Noise in Quantum Computing.” Amazon, Greenhaven Press/Gale, 2008, [https://aws.amazon.com/blogs/quantum-computing/noise-in-quantum-computing/](https://aws.amazon.com/blogs/quantum-computing/noise-in-quantum-computing/).
+
+[4] Qiskit documentation. Version 0.45.0, [https://docs.quantum.ibm.com/api/qiskit](https://docs.quantum.ibm.com/api/qiskit).
+
+[5] B. Baheri, Q. Guan, V. Chaudhary and A. Li, "Quantum Noise in the Flow of Time: A Temporal Study of the Noise in Quantum Computers," 2022 IEEE 28th International Symposium on On-Line Testing and Robust System Design (IOLTS), Torino, Italy, 2022, pp. 1-5, [https://doi.org/10.1109/IOLTS56730.2022.9897404](https://doi.org/10.1109/IOLTS56730.2022.9897404)
+
+[6] scikit-learn documentation. Version 1.3.2., [https://scikit-learn.org/stable/modules/linear_model.html#ordinary-least-squares](https://scikit-learn.org/stable/modules/linear_model.html#ordinary-least-squares).

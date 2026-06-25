@@ -56,8 +56,25 @@ function parseFrontmatter(raw: string): Record<string, unknown> | null {
 
   const fm: Record<string, unknown> = {};
   const lines = match[1].split("\n");
+  let blockScalarKey: string | null = null;
+  let blockScalarLines: string[] = [];
 
   for (const line of lines) {
+    if (blockScalarKey !== null) {
+      if (line.startsWith(" ") || line.startsWith("\t")) {
+        blockScalarLines.push(line);
+        continue;
+      }
+      const rawValue = blockScalarLines
+        .map((l) => l.replace(/^\s+/, ""))
+        .join("\n");
+      fm[blockScalarKey] = rawValue;
+      blockScalarKey = null;
+      blockScalarLines = [];
+    }
+
+    if (!line.trim()) continue;
+
     const colonIndex = line.indexOf(":");
     if (colonIndex === -1) continue;
 
@@ -68,6 +85,12 @@ function parseFrontmatter(raw: string): Record<string, unknown> | null {
       value = value.slice(1, -1);
     }
 
+    if (typeof value === "string" && (value === "|" || value === ">")) {
+      blockScalarKey = key;
+      blockScalarLines = [];
+      continue;
+    }
+
     if (typeof value === "string" && value.startsWith("[") && value.endsWith("]")) {
       value = value
         .slice(1, -1)
@@ -76,6 +99,12 @@ function parseFrontmatter(raw: string): Record<string, unknown> | null {
     }
 
     fm[key] = value;
+  }
+
+  if (blockScalarKey !== null && blockScalarLines.length > 0) {
+    fm[blockScalarKey] = blockScalarLines
+      .map((l) => l.replace(/^\s+/, ""))
+      .join("\n");
   }
 
   return fm;

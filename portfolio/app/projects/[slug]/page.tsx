@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { compileMDX } from "next-mdx-remote/rsc";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { getProjectBySlug, getAllProjects } from "@/lib/projects";
 import { mdxComponents } from "@/components/mdx";
+import Description from "@/components/mdx/Description";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -32,7 +35,13 @@ export default async function ProjectPage({ params }: PageProps) {
 
   const { content } = await compileMDX({
     source: project.content,
-    options: { blockJS: false },
+    options: {
+      blockJS: false,
+      mdxOptions: {
+        remarkPlugins: [remarkMath],
+        rehypePlugins: [rehypeKatex],
+      },
+    },
     components: mdxComponents,
   });
 
@@ -73,7 +82,7 @@ export default async function ProjectPage({ params }: PageProps) {
         </h1>
 
         <p className="text-body text-text-secondary leading-relaxed">
-          {description}
+          <Description text={description} />
         </p>
 
         {/* Links */}

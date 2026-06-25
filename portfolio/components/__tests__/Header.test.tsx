@@ -18,7 +18,7 @@ describe("Header", () => {
 
   it("renders site name as home link", () => {
     render(<Header />);
-    const homeLink = screen.getByText("Henry Yu");
+    const homeLink = screen.getByText("Home");
     expect(homeLink.closest("a")).toHaveAttribute("href", "/");
   });
 });

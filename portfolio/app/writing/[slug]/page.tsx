@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { compileMDX } from "next-mdx-remote/rsc";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import { getWritingBySlug, getAllWriting } from "@/lib/writing";
 import { mdxComponents } from "@/components/mdx";
+import Description from "@/components/mdx/Description";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -32,6 +35,13 @@ export default async function WritingPostPage({ params }: PageProps) {
 
   const { content } = await compileMDX({
     source: post.content,
+    options: {
+      blockJS: false,
+      mdxOptions: {
+        remarkPlugins: [remarkMath],
+        rehypePlugins: [rehypeKatex],
+      },
+    },
     components: mdxComponents,
   });
 
@@ -56,7 +66,7 @@ export default async function WritingPostPage({ params }: PageProps) {
           {title}
         </h1>
         <p className="text-body text-text-secondary leading-relaxed">
-          {description}
+          <Description text={description} />
         </p>
       </header>
 

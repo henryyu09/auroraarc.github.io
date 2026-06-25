@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
+  <rect width="800" height="400" fill="#f0f7f3"/>
+  <path d="M 120 280 Q 200 120 280 220 T 400 160 T 520 240 T 640 120" fill="none" stroke="#4A8B6A" stroke-width="2.5" opacity="0.35"/>
+  <path d="M 120 280 Q 200 160 280 240 T 400 180 T 520 260 T 640 160" fill="none" stroke="#4A8B6A" stroke-width="1.5" opacity="0.2"/>
+  <circle cx="280" cy="220" r="4" fill="#4A8B6A" opacity="0.5"/>
+  <circle cx="400" cy="160" r="4" fill="#4A8B6A" opacity="0.5"/>
+  <circle cx="520" cy="240" r="4" fill="#4A8B6A" opacity="0.5"/>
+  <circle cx="640" cy="120" r="4" fill="#4A8B6A" opacity="0.5"/>
+  <text x="400" y="345" text-anchor="middle" font-family="system-ui, sans-serif" font-size="20" font-weight="500" fill="#4A8B6A" opacity="0.6">Noise Analysis</text>
+</svg>

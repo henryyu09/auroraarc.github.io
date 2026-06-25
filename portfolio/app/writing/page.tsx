@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getAllWriting } from "@/lib/writing";
+import Description from "@/components/mdx/Description";
 
 export const metadata: Metadata = {
   title: "Writing — Henry Yu",
@@ -14,7 +15,7 @@ export default function WritingPage() {
     <div className="px-6 py-20" style={{ maxWidth: "720px", margin: "0 auto" }}>
       <h1 className="font-display text-heading text-text-primary mb-2">Writing</h1>
       <p className="text-body text-text-secondary mb-10">
-        Thoughts on quantum computing, machine learning, and building things.
+        My thoughts on things.
       </p>
 
       {posts.length === 0 ? (
@@ -33,7 +34,7 @@ export default function WritingPage() {
                   {post.title}
                 </h2>
                 <p className="text-small text-text-secondary mt-1 leading-relaxed">
-                  {post.description}
+                  <Description text={post.description} />
                 </p>
               </Link>
             </article>

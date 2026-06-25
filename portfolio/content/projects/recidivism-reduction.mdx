@@ -1,33 +1,34 @@
 ---
 title: "Breaking the Cycle: Reducing Recidivism in Iowa State Prisons"
 date: "2023-03"
-tags: ["Data Science", "R", "Statistics"]
-description: "Data-driven analysis of recidivism cycles and the impact of various factors on recidivism rates."
+tags: ["Actuarial Science", "Python", "Statistics"]
+description: "Analysis of the recidivism cycle and the impact of various factors on recidivism rates."
+image: "/images/projects/recidivism-reduction.svg"
 links:
   github: "https://github.com/AuroraArc"
-  paper: "https://www.soa.org/49c692/globalassets/assets/files/static-pages/research/arch/2023/arch-2023-2-breaking-the-cycle-reducing-recidivism.pdf"
+  paper: "https://www.soa.org/globalassets/assets/files/static-pages/research/arch/2023/arch-2023-2-breaking-the-cycle-reducing-recidivism.pdf"
 ---
 
 ## Summary
 
-A comprehensive statistical analysis of recidivism patterns in Iowa's prison system, identifying key risk factors and evaluating the effectiveness of intervention programs. Published in the Society of Actuaries ARCH 2023 proceedings.
+In this paper, we address the persistent issue of repeat offenses in Iowa, where over one-third of released inmates return to prison within three years. This high recidivism rate not only affects offenders but also imposes substantial financial burdens on the state's citizens.
 
 ## Technical Approach
 
-Using longitudinal correctional data, we applied survival analysis (Cox proportional hazards models) and random forest classifiers to identify the most significant predictors of re-offense within 3 years of release.
+Utilizing data from the Iowa Department of Corrections, we developed a feed-forward neural network to predict the likelihood of an inmate re-offending upon release. The model incorporated various parameters, including, but not limited to:
+* inmate-specific factors (age, gender, type of crime)
+* prison conditions (e.g., overpopulation)
+* socio-economic indicators from the inmate's home county (such as median personal income).
 
-<Callout type="warning">
-Working with correctional data requires careful attention to bias — historical policing patterns can confound recidivism metrics.
-</Callout>
+The model achieved an AUC-ROC score of 0.849, indicating a high level of accuracy. To assess the financial impact of recidivism, we estimated costs associated with different classifications of crimes, predicting that recidivism could cost Iowa over $348 million. This analysis included a heat map to identify the distribution of crimes by classification, highlighting areas with higher concentrations of specific felony classes.
 
-## Results
+## Recommendations
 
-Key findings:
-- Educational programs reduced recidivism risk by approximately 22%
-- Employment assistance post-release was the single most impactful intervention
-- Risk scores from the model outperformed traditional assessment tools
+Based on these findings, we formulated four major recommendations to reduce recidivism rates and associated costs:
 
-## Future Improvements
+* **Address Prison Overpopulation**: Given the significant correlation between prison overpopulation and recidivism rates, we propose that the Iowa Department of Justice increase its implementation of alternative correctional programs, such as probation and community service, and reduce the use of mandatory minimums and determinate sentencing in the Iowa state code.
+* **Enhance Drug and Behavioral Therapy**: Implement comprehensive drug and behavioral therapy programs to address underlying issues contributing to criminal behavior.
+* **Expand Education and Counseling in Maximum Security Prisons**: Provide more educational and counseling opportunities to equip inmates with skills and support for successful reintegration into society.
+* **Develop Post-Release Programs for At-Risk Inmates**: Focus on creating support systems for inmates identified as high-risk for recidivism to facilitate their transition back into the community.
 
-- Incorporate more granular program participation data
-- Explore causal inference methods to better isolate program effects
+For more information, refer to the [paper](https://www.soa.org/globalassets/assets/files/static-pages/research/arch/2023/arch-2023-2-breaking-the-cycle-reducing-recidivism.pdf).

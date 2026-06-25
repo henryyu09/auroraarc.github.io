@@ -1,6 +1,13 @@
 import { render, screen } from "@testing-library/react";
 import ProjectCard from "@/components/projects/ProjectCard";
 
+vi.mock("next/image", () => ({
+  default: (props: Record<string, unknown>) => {
+    const { fill, ...rest } = props;
+    return <img {...rest} data-fill={fill ? "true" : undefined} />;
+  },
+}));
+
 describe("ProjectCard", () => {
   const defaultProps = {
     title: "Test Project",
@@ -21,5 +28,12 @@ describe("ProjectCard", () => {
     render(<ProjectCard {...defaultProps} />);
     const link = screen.getByRole("link");
     expect(link).toHaveAttribute("href", "/projects/test-project");
+  });
+
+  it("renders image when image prop is provided", () => {
+    render(<ProjectCard {...defaultProps} image="/images/projects/test.svg" />);
+    const img = screen.getByAltText("Test Project thumbnail");
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute("src", "/images/projects/test.svg");
   });
 });

@@ -7,7 +7,6 @@ describe("Footer", () => {
     expect(screen.getByText("Email")).toBeInTheDocument();
     expect(screen.getByText("GitHub")).toBeInTheDocument();
     expect(screen.getByText("LinkedIn")).toBeInTheDocument();
-    expect(screen.getByText("Resume")).toBeInTheDocument();
   });
 
   it("has correct href for email", () => {

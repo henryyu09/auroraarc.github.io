@@ -14,7 +14,7 @@ export default function ProjectsPage() {
     <div className="px-6 py-20" style={{ maxWidth: "960px", margin: "0 auto" }}>
       <h1 className="font-display text-heading text-text-primary mb-2">Projects</h1>
       <p className="text-body text-text-secondary mb-10">
-        Quantum computing, machine learning, data science, and systems.
+        Financial research, quantum computing, and data analytics.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -27,6 +27,7 @@ export default function ProjectsPage() {
               description={projects[0].description}
               tags={projects[0].tags}
               slug={projects[0].slug}
+              image={projects[0].image}
               large
             />
           </div>
@@ -39,6 +40,7 @@ export default function ProjectsPage() {
             description={project.description}
             tags={project.tags}
             slug={project.slug}
+            image={project.image}
           />
         ))}
       </div>

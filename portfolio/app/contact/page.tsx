@@ -63,8 +63,7 @@ export default function Contact() {
     <div className="px-6 py-20" style={{ maxWidth: "720px", margin: "0 auto" }}>
       <h1 className="font-display text-heading text-text-primary mb-4">Contact</h1>
       <p className="text-body text-text-secondary mb-10 max-w-lg">
-        Open to collaboration on quantum computing, ML, and systems research.
-        Feel free to reach out.
+        Feel free to reach out if you have questions about my projects or if you just want to connect.
       </p>
       <ul className="flex flex-col gap-3">
         {LINKS.map((link) => {

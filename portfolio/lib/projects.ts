@@ -7,6 +7,7 @@ export interface ProjectFrontmatter {
   tags: string[];
   description: string;
   slug: string;
+  image?: string;
   links?: {
     github?: string;
     paper?: string;
@@ -61,17 +62,66 @@ function parseFrontmatter(raw: string): Record<string, unknown> | null {
 
   const fm: Record<string, unknown> = {};
   const lines = match[1].split("\n");
+  let currentKey: string | null = null;
+  let blockScalarKey: string | null = null;
+  let blockScalarLines: string[] = [];
 
   for (const line of lines) {
+    // If we're collecting a block scalar value
+    if (blockScalarKey !== null) {
+      if (line.startsWith(" ") || line.startsWith("\t")) {
+        blockScalarLines.push(line);
+        continue;
+      }
+      // Line is not indented → block scalar ended, finalize it
+      const rawValue = blockScalarLines
+        .map((l) => l.replace(/^\s+/, ""))
+        .join("\n");
+      fm[blockScalarKey] = rawValue;
+      blockScalarKey = null;
+      blockScalarLines = [];
+      // Fall through to process current line as a new key
+    }
+
+    // Skip empty lines (outside block scalars)
+    if (!line.trim()) continue;
+
+    // Indented line → child of currentKey (nested object)
+    if ((line.startsWith(" ") || line.startsWith("\t")) && currentKey) {
+      const colonIndex = line.indexOf(":");
+      if (colonIndex === -1) continue;
+
+      const subKey = line.slice(0, colonIndex).trim();
+      let value: unknown = line.slice(colonIndex + 1).trim();
+
+      if (typeof value === "string" && value.startsWith('"') && value.endsWith('"')) {
+        value = value.slice(1, -1);
+      }
+
+      // Ensure currentKey maps to an object
+      if (!fm[currentKey] || typeof fm[currentKey] !== "object") {
+        fm[currentKey] = {};
+      }
+      (fm[currentKey] as Record<string, unknown>)[subKey] = value;
+      continue;
+    }
+
+    // Top-level line
     const colonIndex = line.indexOf(":");
     if (colonIndex === -1) continue;
 
-    const key = line.slice(0, colonIndex).trim();
+    currentKey = line.slice(0, colonIndex).trim();
     let value: unknown = line.slice(colonIndex + 1).trim();
 
-    // Remove quotes
     if (typeof value === "string" && value.startsWith('"') && value.endsWith('"')) {
       value = value.slice(1, -1);
+    }
+
+    // Check for YAML block scalar indicators (| or >)
+    if (typeof value === "string" && (value === "|" || value === ">")) {
+      blockScalarKey = currentKey;
+      blockScalarLines = [];
+      continue;
     }
 
     // Handle arrays: [item1, item2]
@@ -82,7 +132,20 @@ function parseFrontmatter(raw: string): Record<string, unknown> | null {
         .map((s) => s.trim().replace(/^"(.*)"$/, "$1"));
     }
 
-    fm[key] = value;
+    // Only set if value is non-empty (nested object will be set by indented lines)
+    if (value !== "") {
+      fm[currentKey] = value;
+    } else {
+      // Initialize as empty object for nested parsing
+      fm[currentKey] = {};
+    }
+  }
+
+  // Handle block scalar at end of frontmatter
+  if (blockScalarKey !== null && blockScalarLines.length > 0) {
+    fm[blockScalarKey] = blockScalarLines
+      .map((l) => l.replace(/^\s+/, ""))
+      .join("\n");
   }
 
   return fm;

@@ -32,7 +32,7 @@ export default function Header() {
           href="/"
           className="font-display text-lg font-semibold text-text-primary hover:text-accent transition-colors"
         >
-          Henry Yu
+          Home
         </Link>
 
         {/* Desktop nav */}

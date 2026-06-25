@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
+  <rect width="800" height="400" fill="#f0f7f3"/>
+  <circle cx="300" cy="200" r="80" fill="none" stroke="#4A8B6A" stroke-width="2" opacity="0.2"/>
+  <circle cx="500" cy="200" r="80" fill="none" stroke="#4A8B6A" stroke-width="2" opacity="0.3"/>
+  <circle cx="300" cy="200" r="30" fill="#4A8B6A" opacity="0.1"/>
+  <circle cx="500" cy="200" r="30" fill="#4A8B6A" opacity="0.15"/>
+  <line x1="330" y1="200" x2="420" y2="200" stroke="#4A8B6A" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.3"/>
+  <text x="400" y="345" text-anchor="middle" font-family="system-ui, sans-serif" font-size="20" font-weight="500" fill="#4A8B6A" opacity="0.6">Qubit Feature Analysis</text>
+</svg>

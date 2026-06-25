@@ -26,9 +26,8 @@ export default function About() {
           and everything in between.
         </p>
         <p>
-          I care about readable engineering: code that communicates intent, systems
-          that are documented as well as they are built, and visualizations that
-          make complex ideas accessible.
+          I try my best to make my work readable: systems that are well-documented, visualizations that make complex ideas
+          comprehensible, and explanations that make sense even to a non-specialist.
         </p>
       </div>
 
