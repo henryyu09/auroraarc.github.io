@@ -21,8 +21,7 @@ export default function Header() {
 
   return (
     <header
-      className="sticky top-0 z-50 bg-surface-primary/90 backdrop-blur-sm
-        border-b border-border-subtle"
+      className="sticky top-0 z-50 bg-surface-primary border-b border-border-subtle"
     >
       <div
         className="mx-auto flex items-center justify-between h-16 px-6"

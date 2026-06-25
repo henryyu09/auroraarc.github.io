@@ -44,7 +44,6 @@ body {
   color: var(--text-primary);
   background-color: var(--surface-primary);
   line-height: 1.6;
-  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 ::selection {
@@ -115,12 +114,11 @@ a:hover {
 }
 
 /* ─── Smooth transitions for theme ──────────────── */
-/* Scope theme transitions to interactive and themed elements only — 
-   applying to * causes layout/paint work on every scroll tick */
-a, button, input, textarea, select,
-[class*="bg-"], [class*="text-"], [class*="border-"] {
-  transition-property: background-color, border-color, color;
-  transition-duration: 0.3s;
+/* Only apply transitions to interactive elements — broad selectors
+   force style recalc on every scroll tick and cause jank */
+a, button, input, textarea, select {
+  transition-property: background-color, border-color, color, opacity;
+  transition-duration: 0.2s;
   transition-timing-function: ease;
 }
 
