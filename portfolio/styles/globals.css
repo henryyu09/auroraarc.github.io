@@ -34,6 +34,9 @@
 /* ─── Base Styles ───────────────────────────────── */
 html {
   scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body {
@@ -112,7 +115,10 @@ a:hover {
 }
 
 /* ─── Smooth transitions for theme ──────────────── */
-*, *::before, *::after {
+/* Scope theme transitions to interactive and themed elements only — 
+   applying to * causes layout/paint work on every scroll tick */
+a, button, input, textarea, select,
+[class*="bg-"], [class*="text-"], [class*="border-"] {
   transition-property: background-color, border-color, color;
   transition-duration: 0.3s;
   transition-timing-function: ease;
