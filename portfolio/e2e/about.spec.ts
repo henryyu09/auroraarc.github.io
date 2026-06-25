@@ -13,9 +13,8 @@ test.describe("About", () => {
     await expect(emailLink).toBeVisible();
   });
 
-  test("resume page has download button", async ({ page }) => {
-    await page.goto("/resume");
-    await expect(page.locator("h1")).toContainText("Resume");
+  test("about page has resume download button", async ({ page }) => {
+    await page.goto("/about");
     const downloadBtn = page.locator("a[download]");
     await expect(downloadBtn).toBeVisible();
     await expect(downloadBtn).toHaveAttribute("href", "/cv.pdf");

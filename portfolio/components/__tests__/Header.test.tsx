@@ -7,13 +7,13 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("Header", () => {
-  it("renders all 5 nav items", () => {
+  it("renders all 4 nav items", () => {
     render(<Header />);
     expect(screen.getByText("Work")).toBeInTheDocument();
     expect(screen.getByText("Writing")).toBeInTheDocument();
     expect(screen.getByText("About")).toBeInTheDocument();
-    expect(screen.getByText("Resume")).toBeInTheDocument();
     expect(screen.getByText("Contact")).toBeInTheDocument();
+    expect(screen.queryByText("Resume")).not.toBeInTheDocument();
   });
 
   it("renders site name as home link", () => {
