@@ -11,6 +11,7 @@ export interface WritingFrontmatter {
 const WRITING_DIR = path.join(process.cwd(), "content/writing");
 
 export function getAllWriting(): WritingFrontmatter[] {
+  if (!fs.existsSync(WRITING_DIR)) return [];
   const files = fs.readdirSync(WRITING_DIR);
   const posts: WritingFrontmatter[] = [];
 
