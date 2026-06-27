@@ -6,7 +6,7 @@ describe("Hero", () => {
     render(<Hero />);
     expect(screen.getByText("Henry Yu")).toBeInTheDocument();
     expect(
-      screen.getByText(/CS student building ML/i)
+      screen.getByText(/CS \+ Statistics student/i)
     ).toBeInTheDocument();
   });
 

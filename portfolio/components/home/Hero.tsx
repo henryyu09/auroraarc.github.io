@@ -10,13 +10,10 @@ export default function Hero() {
         Henry Yu
       </h1>
       <p className="font-display text-heading text-text-secondary mb-6 max-w-2xl">
-        CS student building ML, systems, and visualization projects with an
-        emphasis on readable engineering.
+        CS + Statistics student at the University of Wisconsin&ndash;Madison, interested in quantum computing, financial engineering, and software systems.
       </p>
       <p className="text-body text-text-secondary max-w-xl mb-10 leading-relaxed">
-        I build things at the intersection of quantum computing, machine learning,
-        and software systems — writing code that&apos;s as clear as the ideas behind it.
-        Currently at the University of Wisconsin&ndash;Madison.
+        I'm currently working on quantum reservoir computing to predict binary toxicity of molecules, and designing a backtesting framework based on market microstructure. Feel free to check out my <Link href="/projects" className="text-accent hover:underline">projects</Link> or <Link href="/about" className="text-accent hover:underline">learn more about me</Link>.
       </p>
       <div className="flex gap-4">
         <Link
