@@ -212,7 +212,7 @@ The problem with only predicting fill probability is that we never answer whethe
 
 I defined the Stage 2 target as: mid price drops ≥ 1 tick within `t_adverse` seconds of the fill. The model is trained on the filled-order subset only using the same L2 feature vector.
 
-| Fill | Adverse | AUC (val) | AUC (test Day 8) | AUC (test Day 9) | PR-AUC(val) | Brier (val) | n_filled/total |
+| Fill | Adverse | AUC (val) + 95% CI | AUC (test Day 8) | AUC (test Day 9) | PR-AUC(val) | Brier (val) | n_filled/total |
 |----------|-------------|-----|----------|-|-|-|-|
 | 0.1s | 0.01s | 0.699 [0.685, 0.714] | 0.727 | 0.724 | 0.034 | 0.009 | 12.5% |
 | 0.1s | 0.1s | 0.639 [0.634, 0.645] | 0.626 | 0.625 | 0.100 | 0.055 | 12.5% |
@@ -233,6 +233,13 @@ The best adverse horizon is the 1s horizon, because even though it has the worst
 Both pairs degrade by a similar margin out of sample, around -0.10 AUC from val to days 8/9, so the relative ordering (persistent imbalance beats momentary depletion as a predictor) holds.
 
 One thing to note is that each fill/horizon grouping isn't drawn from the same population, as noted in the percentage of fills. Longer `h` windows will naturally have a higher share of orders that get filled, so the longer time horizons increasingly contain more predictable order flow by construction.
+
+I ran permutation tests (shuffle labels, re-train 100×, record AUC) to confirm the results aren't spurious:
+
+- **Permuted Stage 1 AUC**: ~0.505 (null distribution centered at random)
+- **Permuted Stage 2 AUC**: ~0.502
+
+I also ran a leakage audit (T+1 shift test) to confirm no feature at timestamp T uses data from T+1, and this passed too.
 
 ## Composite Q Score
 
@@ -269,7 +276,7 @@ No surprises here.
 
 **Realized $\Delta$mid (1.0s adverse horizon):**
 
-| Quartile | Mean Δmid (tq) | 95% CI | std | n_fills |
+| Quartile | Mean $\Delta$mid (tq) | 95% CI | std | n_fills |
 |----------|----------------|--------|---------|-|
 | Q1 (low) | -0.225 | [-0.234, -0.215] | 2.18 | 208,729 |
 | Q2 | -0.199 | [-0.207, -0.190] | 1.98 | 208,728 |
@@ -282,7 +289,7 @@ Q1 through Q3 maintain monotonicity, but interestingly, Q4 regresses and perform
 
 If we compare the feature values of Q3 vs. Q4:
 
-| Feature | Q3 | Q4 | Δ |
+| Feature | Q3 | Q4 | $\Delta$ |
 |---------|-----|-----|----|
 | Book imbalance (10-level) | +0.002 | -0.482 | -0.484 |
 | Ask order count at touch | -0.763 | -0.467 | +0.296 |
@@ -294,50 +301,47 @@ Q4's positive midprice delta (+0.310) combined with ask-heavy imbalance (−0.48
 
 To summarize, the Q4 state shows a market that has just been swept.
 
-If we compare this to Q3, we see near-neutral imbalance (+0.002), flat momentum (+0.038σ), moderate bid churn (+0.196), and neutral ask churn (+0.057). This is a stark difference to Q4's metrics, and this describes a much more balanced market. My interpretation is that the Stage 2 model is less confident about fills being nontoxic, but the realized outcome is better because the market is stable.
+If we compare this to Q3, we see near-neutral imbalance (+0.002), flat momentum (+0.038), moderate bid churn (+0.196), and neutral ask churn (+0.057). This is a stark difference to Q4's metrics, and this describes a much more balanced market. My interpretation is that the Stage 2 model is less confident about fills being nontoxic, but the realized outcome is better because the market is stable.
 
 ### Strategy Comparison
 
 Since Q2 and Q3 outperform Q4, a natural strategy is to combine only Q2+Q3:
 
-| Strategy | Mean Δmid (tq) | 95% CI |
+| Strategy | Mean $\Delta$mid (tq) | 95% CI |
 |----------|----------------|--------|
 | Naive passive (all fills) | −0.206 | [−0.211, −0.202] |
 | Q-middle (Q2+Q3 only) | **−0.190** | [−0.196, −0.184] |
 | Q-top half | −0.201 | [−0.207, −0.196] |
 | Q-bottom half | −0.212 | [−0.218, −0.206] |
 
-The Q-middle strategy reduces adverse price impact by ~0.016 ticks versus naive passive, with non-overlapping confidence intervals, which is statistically significant on test data. The top-half filter also beats naive but by less (0.005 ticks), and its interval barely clears.
+With Bonferroni correction ($K=3,\alpha=0.0167$, positive = improvement):
+
+| Comparison vs Naive | $\Delta$ (tq) | 95% CI | Bonf CI (K=3) |
+|-|-|-|-|
+|Q-middle (Q2+Q3) | **+0.017** | [+0.013, +0.021] | [+0.012, +0.022] |
+|Q-filtered (top half) | +0.005 | [+0.001, +0.009] | [+0.000, +0.010] |
+Q-avoided (bottom half) | +0.005 | [+0.001, +0.009] | [+0.000, +0.010] |
+
+The Q-middle strategy reduces adverse price impact by ~0.017 (the 0.016 computed from the first table can be attributed to rounding) ticks versus naive passive, with non-overlapping confidence intervals, which is statistically significant on test data. With $K=3$ pairwise tests against the naive baseline, the Bonferroni-corrected significant threshold is $\alpha=0.0167$ $(0.05/3)$. Q-middle's corrected CI of [+0.012, +0.022] ticks remains entirely above zero, confirming the result is significant, whereas both Q-top and Q-bottom both produce corrected lower bounds at 0 ticks, so neither can be claimed as statistically significant at this threshold.
 
 ## What L2 Can and Cannot Predict
 
-We can say for certain that:
+### What L2 Can Predict
+* Fill probability with moderate discrimination (test AUC ~0.76-0.79 at short horizons), which is driven by touch dynamics rather than deep book depth.
+* The worst quartile of placement opportunities with reliability, and Q-middle filtering statistically significantly reduces adverse price impact.
+* Persistent order flow imbalance states that correlate with near-term price drift without knowing true queue position.
 
-### What Doesn't
-
-
-
-<Callout type="info">
-**The honest framing**: This project does not claim L2 can "approximate L3" or "reconstruct queue position." It quantifies the gap. For market participants without L3 data, this model gives a principled way to avoid the worst 25% of placement opportunities. For participants with L3, combining L2 features with true queue position would likely outperform either alone — but that's a separate experiment.
-</Callout>
-
-## Validity Checks
-
-I ran permutation tests (shuffle labels, re-train 100×, record AUC) to confirm the results aren't spurious:
-
-- **Permuted Stage 1 AUC**: ~0.505 (null distribution centered at random)
-- **Permuted Stage 2 AUC**: ~0.502
-- **Observed**: 0.84 / 0.71 — far outside the null, the signal is real.
-
-I also ran a leakage audit (t+1 shift test) to confirm no feature at timestamp T uses data from T+1. Zero leaks detected.
+### What L2 Can't Predict
+* True queue position; this is a given, as L2 fundamentally lacks the necessary data to accomplish this.
+* Which placements will be best, as shown how Q4 scores is not necessarily the top-outcome quartile.
+* Adverse selection with high confidence at any horizon.
 
 ## Limitations
-
-- **9 trading days is a narrow sample.** This represents a pretty small subsample of the overall trading timeline.
-- **ES only, buy-side only.** Only one instrument (and only one side tested at that), so generalization to other instruments or the ask cannot be assumed.
-- **Stage 2 selection bias.** Trained on fills only, applied to all observations at inference time.
-- **Models are logistic regression and random forest.** More expressive models might capture the Q4 nonlinearity — not explored.
-- **No transaction costs, market impact, or capacity constraints.** The backtest is a lower bound.
+* 9 days is pretty small, especially since the models were only traded on 6 trading days. The good news is that VIX ranges from 15.18 to 23.34, spanning from a low-volatility regime to a moderately-stressed one.
+* I only trained on ES futures, and only the bid side at that. This means that this is not reliably generalizable to other CME instruments (NQ, CL, etc.) or the ask side.
+* Stage 2 has inherent selection bias since it was trained on fills only but applied to all observations at inference time.
+* I only trained logistic regression and random forest models, which might not be able to capture underlying nonlinear patterns, one example being the Q4 anomaly.
+* No transaction costs, market impact, or capacity constraints were part of the evaluation, so the backtest only serves as a lower bound.
 
 ## Conclusion
 
@@ -372,7 +376,40 @@ This mechanism directly explains why passive fills are negatively selected by co
 </Appendix>
 
 <Appendix id="appendix-b" title="Appendix B: Dataset Details">
+I used historical L3 data from Databento, which itself sources it from CME Globex MBO. The only instrument used was ES, specifically `ESM6`, June's front-month contract. Sessions are full Globex 23hr, covering a span of 9 days, excluding Sunday.
+
+| Date | # of Messages | VIX Range | train/val/test |
+|-|-|-|-|
+| June 1 | 11,306,791 | [15.71, 16.34] | train |
+| June 2 | 9,744,907 | [15.71, 16.29] | train |
+| June 3 | 11,752,683 | [15.94, 16.63] | train |
+| June 4 | 11,817,836 | [15.18, 16.80] | train |
+| June 5 | 21,847,057 | [15.56, 21.57] | train |
+| June 7 | 709,239 | — | — |
+| June 8 | 20,217,580 | [17.94, 20.35] | train |
+| June 9 | 27,150,154 | [17.52, 23.34] | val |
+| June 10 | 24,404,553 | [20.06, 22.66] | test |
+| June 11 | 22,955,107 | [19.36, 22.59] | test |
+
+Total messages: 161,196,668 $\\$
+Avg messages/day: 17,910,741
+
+### Timeline of Events
+June 1: major indices closed at new ATHs driven by a possible US-Iran peace deal, Nvidia's new "superchip," and Anthropic's confidential IPO filing. Brent crude also jumped 4.2% to nearly \$95. ([source](https://www.wsj.com/livecoverage/stock-market-today-dow-sp-500-nasdaq-06-01-2026))
+
+June 2: Oil hit 1-week high as Tehran reviewed a US ceasefire proposal, with Brent crude closing near \$96 and WTI near \$94. ([source](https://www.reuters.com/business/energy/oil-steadies-uncertainty-over-us-iran-talks-keeps-markets-edge-2026-06-02/))
+
+June 4-5: This was by far the biggest volatility event of the period, as Broadcom fell 13.4% on June 4, and on June 5, SOX plunged 10.3%. Across the semiconductor market, roughly \$1.3 trillion was erased, while the Nasdaq and S&P 500 dropped 4.18% and 2.64% respectively. In addition to this, the May jobs report showed 172,000 nonfarm payrolls added vs. the 80,000-85,000 consensus, pushing Treasury yields higher. ([Jobs report](https://finance.yahoo.com/economy/articles/jobs-report-may-2026-shows-181234092.html), [Chips report](https://www.reuters.com/business/media-telecom/chip-selloff-erases-over-1-trillion-stock-market-value-2026-06-05/))
+
+June 9-10: A US helicopter was shot down, prompting confirmed retaliatory strikes on Iran, with President Trump stating, "we're going to be attacking them very hard." ([source](https://www.nasdaq.com/articles/stock-market-news-jun-11-2026))
+
+June 11: Semiconductor stocks continue their selloff, with AVGO and NVDA falling 5.1% and 3.7% respectively. Prices of Brent and WTI rose 1.8% and 2.07% respectively. The market also gets ready for the SpaceX IPO the following day. ([source](https://www.nasdaq.com/articles/stock-market-news-jun-11-2026))
+
+Train days sit in a low-volatility setting (VIX ranging from 15-17). Val/test days fall on an elevated, geopolitically driven regime (VIX ranging from 17-23). Since the model was never trained on conditions resembling the test set, the AUC degradation is a more informative out-of-sample stress test than a random split would produce.
+
+It's also important to note that the rollover date to the next front-month contract occurred on June 10, so approximately 23% of the total volume traded on June 11 was on other contracts that was not `ESM6`. This means the order book on June 11 is thinner and noisier than usual activity would suggest, which actually biases test-day AUC downward, so my reported test AUC is more likely a lower bound of what the model would achieve on a non-rolling day.
 </Appendix>
+
 <Appendix id="appendix-c" title="Appendix C: Feature Engineering Details">
 All 78 features are computed from MBP-10 (L2) orderbook snapshots (best 10 bid-asks). Prices are in `price_tq`, the number of ticks. Sizes and counts are z-score normalized per day. Features fall into four categories:
 
@@ -450,4 +487,10 @@ Picking what target to use was very crucial for this project. A natural selectio
 Other temporal targets were rejected:
 * Fill probability at a fixed time (e.g., "What is the probability this order is filled at time T?"): fill events are discrete in nature
 * Time-to-fill regression (predicting the average time it takes for an order to be filled): the distribution is inherently heavy-tailed and multimodal, making evaluation and point estimation extremely hard and unreliable.
+
+Therefore, we directly satisfy two properties already: binary classification gives you proper probabilities, and time-based windows are regime-invariant. The final property that makes this the best choice is that it maps directly to a tradeable decision. When we look at L2 data in real time, the actionable question isn't any of the other targets; rather,
+
+"If I place a passive limit order at the best bid *right now*, what happens?"
+
+The binary outcome corresponds one-to-one with a simple yes/no decision, so it naturally becomes the best choice.
 </Appendix>
