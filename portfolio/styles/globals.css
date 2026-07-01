@@ -125,6 +125,23 @@ a:hover {
   border-radius: var(--radius-sm);
 }
 
+/* ─── Citation links ────────────────────────────── */
+.citation {
+  font-size: 0.75em;
+  vertical-align: super;
+  line-height: 1;
+  color: var(--accent);
+  text-decoration: none;
+  scroll-margin-top: 5rem;
+}
+.citation:hover {
+  text-decoration: underline;
+}
+
+.ref-target {
+  scroll-margin-top: 5rem;
+}
+
 /* ─── Prose (MDX content) ──────────────────────── */
 .prose-styled h1 {
   font-family: var(--font-display);

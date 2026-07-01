@@ -15,7 +15,7 @@ export default function Home() {
     <>
       <Hero />
       <FeaturedWork />
-      <SelectedWriting />
+      {/* <SelectedWriting /> */}
       <StackInterests />
     </>
   );

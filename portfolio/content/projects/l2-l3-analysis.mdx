@@ -3,8 +3,451 @@ title: "Quantifying L2 Data Against Order Queue Positioning"
 date: "2026-06"
 tags: ["Microstructure", "Time-Series Analysis", "Python"]
 description: |
-  Using historical ES MBO (L3) data as ground truth, I attempted to quantify how well L2 features predict whether a passive limit order at the touch fills within a given time horizon. I also backtested a strategy using this measurement combined with adverse selection to see whether acting on the predictions improves execution cost versus naive strategies.
+  Predicting fills from L2 data is easier than you think, but predicting whether those fills are any good is harder. This project does both, and the composite result is backtested, revealing a fundamental limit to what L2 data can tell you about execution quality.
 image: "/images/projects/qubit-features-error-rates.svg"
 links:
   github: "https://github.com/AuroraArc"
 ---
+
+## Summary
+Using historical CME MBO (Level 3) data as ground truth, I built a two-stage execution quality model that predicts (1) whether a passive limit order at the best bid will fill within a given time horizon, and (2) whether that fill will be adversely selected.
+
+MBP-10 (Level 2) features achieve ~0.763 AUC for fill prediction and up to ~0.727 AUC for adverse selection across 9 trading days of ES futures data. The backtest delta is around -0.2 ticks, so you can't exactly use this to make money. All passive fills are negatively selected by construction, and the realistic goal is to minimize this loss, not to go down a wild goose chase for positive delta (see [Appendix A](#appendix-a)). A composite quality score composed of the two stages reliably identifies the worst placement opportunities, improving realized execution by ~0.016 ticks per contract over naive passive placement.
+
+<Callout type="info">
+ES (E-mini S&P 500) futures are standardized contracts where each point is worth \$50 per contract. Minimum price move: 0.25 index points = \$12.50/contract — this is one *tick*.
+
+Internally, all prices are stored as `price_tq`: integers representing each 0.25-point unit. A price of 5900.25 becomes `price_tq=23601` (5900.25 x 4). This gives a clean integer value and eliminates any floating-point errors.
+</Callout>
+
+## Background
+
+Any passive order resting at the best bid faces a fundamental uncertainty: *will the queue clear before the touch prices away?*
+
+This question is directly answered by **queue position**: where your order sits in the queue at that price level, a crucial property L3 data displays. L2 market data lacks this, instead offering an aggregate quantity of all orders per price level. Therefore, a 100-lot block at 5900.25 could be:
+* one 100-lot order,
+* ten 10-lot orders,
+* twenty-three 1-lot orders and one 76-lot order,
+* or any combination of 100 lots
+
+This lack of queue information makes it really hard to tell whether you're close to the front of the queue or if you're going to be stuck waiting for many orders to clear before yours.
+
+L3 data exposes every order action (add, modify, cancel, fill, partial fill), each tagged with a unique order ID. With L3, you can reconstruct the exact queue state and determine precisely when a hypothetical order would have filled. However, L3 is expensive, bandwidth-heavy, and, as such, not all market participants have access to it.
+
+<Callout type="info">
+ES futures use strict price-time priority (FIFO), so earliest-arriving orders fill first at a given price level. Queue position is the single biggest determinant of fill probability: Moallemi & Yuan (2017) <a href="#ref-1" class="citation">[1]</a> formally prove that execution probability is non-increasing in queue position and show that positional value can be of the same order of magnitude as the bid-ask spread for large-tick assets like ES.
+
+It's also important to note that an order **modification** that changes price or increases size causes the order to lose priority, meaning it moves to the back of the queue with a new timestamp.
+</Callout>
+
+So the real question becomes: **how much predictive signal does the cheaper L2 data contain for the L3-derived outcome of fill probability?**
+
+## Dataset
+I used 9 trading days (June 1-11, 2026, excluding June 7, Sunday's session) of ES front-month (`ESM6`) futures data sourced from Databento's MBO feed (see [Appendix B](#appendix-b) for why these days).
+
+<CodeBlock
+  filename="dataset_stats.py"
+  language="python"
+  code={`
+Key statistics (9 trading days)
+
+n_events = 161_196_668         # number of MBO messages over the 9 days
+n_events_avg = 17_910_741
+n_features = 78                # spans from bid-ask spread, temporal metrics, etc.
+
+target_s1 = filled within {100ms, 1s, 5s}
+target_s2 = mid drops >= 1 tick within {10ms, 100ms, 1s}
+  `}
+  collapse
+/>
+
+<Callout type="warning">
+**Why exclude Sunday?** 
+
+Sunday's session is a little unique in that it doesn't fall on a day when the typical stock market is open. This means that mostly European and Asian participants are active, reflected in the number of events that occurred: ~700k events vs ~17.9M on average on weekdays, roughly a 25.6x liquidity gap driven by the absence of US participants.
+
+This also means the order book behaves differently during this time: wider spreads, thinner queues, and different fill dynamics. These are things that don't ever occur during normal weekday trading, so it was left out.
+</Callout>
+
+### Pipeline Architecture
+
+<Figure
+  src="/images/l2-l3-analysis/l2-pipeline.svg"
+  alt="L2 data pipeline flowchart from raw MBO through queue reconstruction to backtest"
+  caption=""
+  expandable
+/>
+
+The pipeline processes one day at a time using Polars streaming, because as it turns out, ~160 million messages ends up being a lot of data to process at one time, so unless you have hundreds of gigabytes of RAM to spare, splitting it into days and batching the messages is necessary.
+
+### Queue Reconstruction
+The core of the pipeline is the per-order book state machine that replays all messages per day. For each event, I maintain a FIFO queue per price level:
+
+<CodeBlock
+  filename="l3.py"
+  language="python"
+  code={`
+  @dataclass(frozen=True)
+  class L3Event:
+    timestamp_ns: int    # nanoseconds since epoch
+    symbol: str          # underlying symbol (ESM6)
+    side: str            # 'BID' | 'ASK' | 'NONE'
+    price_tq: int        # normalized price in number of ticks
+    order_id: str        # unique per-order identifier
+    action: str          # 'ADD' | 'MODIFY' | 'CANCEL' | 'CLEAR_BOOK' | 'TRADE' |
+                           'FILL' | 'NONE'
+    quantity: int        # remaining quantity after action
+    fill_qty: int        # quantity filled in event; non-zero for 'TRADE' and 'FILL'
+    flags: int           # Databento flags bitfield. 'F_LAST' (=128) marks the last
+                           message in event sequence, used as snapshot boundary signal.
+  
+  class Book:
+    """Order book reconstructed from MBO events."""
+
+      def __init__(self) -> None:
+      self.orders_by_id: dict[str, OrderState] = {}               # all active orders
+      self.bids: SortedDict[int, list[OrderState]] = SortedDict() # bid prices, ascending
+      self.asks: SortedDict[int, list[OrderState]] = SortedDict() # ask prices, ascending
+      self._events = RollingEventTracker()                     # L2 aggregate order count
+  
+  def apply(self, event: L3Event) -> None:
+    if event.action == 'ADD':
+      self._add(event)
+    elif event.action == 'MODIFY':
+      self._modify(event)
+    elif event.action == 'CANCEL':
+      self._cancel(event)
+    elif event.action == 'CLEAR_BOOK':
+      self.orders_by_id.clear()
+      self.bids.clear()
+      self.asks.clear()
+    elif event.action in {'TRADE', 'FILL'}: # special condition
+      pass
+    elif event.action == 'NONE':
+      pass
+  `}
+  collapse
+/>
+
+<Callout type="info">
+  CME MBP 3.0 splits what we would intuitively call "a trade" into two event types:
+  * A `TRADE` event represents the aggressing side, the incoming order that initiates the transaction. This is the order that arrived and immediately executed against resting liquidity, so it always comes first in the message sequence.
+  * A `FILL` event represents the passive side, the resting order that got hit by the aggressing order. There can be multiple `FILL` events for a single `TRADE`, and each `FILL` gets tagged with the passive order's ID.
+
+Therefore, both `TRADE`/`FILL` events' queue modifications are handled by just the `FILL` events, not by the `TRADE` event itself.
+
+You can read more about it [here](https://databento.com/docs/venues-and-datasets/glbx-mdp3#mbo-normalization?historical=python&live=python&reference=python).
+</Callout>
+
+<Figure
+  src="/images/l2-l3-analysis/order_queue.svg"
+  alt="Order queue diagram detailing how the queue works"
+  caption="Diagram detailing how the queue works"
+  expandable
+/>
+
+From the replay, we generate snapshots, which is defined as the collection of events that one order has, from its creation to when it drops off the order book. The flag `F_LAST` marks the last message of its respective sequence.
+
+| Split | Days | Size |
+|-------|------|------|
+| Train | Days 1–6 | ~2.9M snapshots |
+| Validation | Day 7 | ~540k snapshots |
+| Test | Days 8–9 | ~1.1M snapshots |
+
+### L2 Feature Set
+
+For each label timestamp, I computed features from L2 data only. All time windows use real clock time, not event counts (see [Appendix C](#appendix-c)).
+
+<Callout type="warning">
+As with all time-series analysis, features at timestamp T must only use data from timestamps ≤ T. Using future data leaks information and produces inflated results that wouldn't hold in a live setting.
+</Callout>
+
+The reconstruction is validated by cross-checking against L2 aggregates: total quantity at each price level from the reconstructed order book must match the corresponding L2 snapshot exactly across all timestamps. Even **one** mismatch will cause misalignment for the entire order book.
+
+## Stage 1: Fill Probability
+
+This was a binary classification of the following: **will a hypothetical limit buy order at the best bid fill within T seconds?** ([Why this target?](#appendix-d))
+
+Every 100ms of real time, the system places a limit buy order of 1 contract at the best bid and tracks whether it fills within three time-based horizons: 100ms, 1s, and 5s.
+
+<Figure
+  src="/images/l2-l3-analysis/fill_rate_timeline.svg"
+  alt="Diagram showing the checks for fill rate"
+  caption="Diagram showing the checks for fill rate"
+  expandable
+/>
+
+Two models were trained: logistic regression and random forest. I didn't consider more complex models like neural networks since interpretability was the main goal of the project.
+
+They were evaluated across three time horizons:
+
+| Horizon | Model | AUC (val) + 95% CI | AUC (test Day 8) | AUC (test Day 9) | Brier | Fill % (combined) |
+|---------|-------|-----------|------------------|------------------|---|-|
+| 0.1s | LR | 0.838 [0.836, 0.839] | 0.792 | 0.773 | 0.136 | 24.5% |
+| 0.1s | RF | 0.804 [0.803, 0.805] | 0.779 | 0.762 | 0.147 | 24.5% |
+| 1.0s | LR | 0.843 [0.842, 0.844] | 0.769 | 0.765 | 0.156 | 72.8% |
+| 1.0s | RF | 0.766 [0.765, 0.768] | 0.743 | 0.725 | 0.180 | 72.8% |
+| 5.0s | LR | 0.804 [0.802, 0.806] | 0.720 | 0.728 | 0.062 | 94.0% |
+| 5.0s | RF | 0.745 [0.742, 0.747] | 0.677 | 0.618 | 0.063 | 94.0% |
+
+Some key observations to note:
+ * Test AUC of ~0.763 for LR across all horizons signifies moderate signal, meaning that L2 data does contain significant patterns for fill probability.
+ * The longer the horizon, the *lower* the AUC score despite more fills, meaning the model struggles with discrimination across longer horizons. This can be explained by the fact that more can change in the book between placement and the horizon cutoff.
+
+<Figure
+  src="/images/l2-l3-analysis/feature_importance_lr.png"
+  alt="Permutation importance"
+  caption="Permutation importance showing the 20 best features"
+  expandable
+/>
+
+Fill probability is driven primarily by short-term touch dynamics rather than snapshot levels:
+* `touch_inc_bid_s` (rate of bid-touch increases) and `microprice_tq` (a volume-weighted mid-price signal) lead by a wide margin, meaning the model is mostly picking up on whether the bid is actively strengthening and where fair value sits relative to the quoted spread. 
+* The touch-staleness feature (`since_touch_change_bid_ns`) and the count at the best bid (`bid_ct_00`) contribute meaningfully but secondarily.
+* `touch_dec_ask_s` / `touch_dec_bid_s`(touch decrements) round out the top tier, which is consistent with a fill-probability model that values about queue and touch dynamics rather than deep book structure.
+
+## Stage 2: Adverse Selection
+
+The problem with only predicting fill probability is that we never answer whether that fill was **beneficial**. In other words, once an order fills, we want to determine: **did the price move against us afterward?** Getting filled right before the market drops would hurt you more than if you stayed out.
+
+I defined the Stage 2 target as: mid price drops ≥ 1 tick within `t_adverse` seconds of the fill. The model is trained on the filled-order subset only using the same L2 feature vector.
+
+| Fill | Adverse | AUC (val) | AUC (test Day 8) | AUC (test Day 9) | PR-AUC(val) | Brier (val) | n_filled/total |
+|----------|-------------|-----|----------|-|-|-|-|
+| 0.1s | 0.01s | 0.699 [0.685, 0.714] | 0.727 | 0.724 | 0.034 | 0.009 | 12.5% |
+| 0.1s | 0.1s | 0.639 [0.634, 0.645] | 0.626 | 0.625 | 0.100 | 0.055 | 12.5% |
+| 0.1s | 1.0s | 0.610 [0.607, 0.613] | 0.569 | 0.582 | 0.310 | 0.182 | 12.5% |
+| 1.0s | 0.01s | 0.680 [0.670, 0.689] | 0.706 | 0.671 | 0.029 | 0.008 | 54.4% |
+| 1.0s | 0.1s | 0.669 [0.665, 0.674] | 0.620 | 0.601 | 0.080 | 0.039 | 54.4% |
+| 1.0s | 1.0s | 0.675 [0.673, 0.677] | 0.592 | 0.599 | 0.284 | 0.144 | 54.4% |
+| 5.0s | 0.01s | 0.686 [0.678, 0.695] | 0.695 | 0.647 | 0.030 | 0.008 | 87.3% |
+| 5.0s | 0.1s | 0.689 [0.684, 0.692] | 0.615 | 0.585 | 0.076 | 0.033 | 87.3% |
+| 5.0s | 1.0s | 0.707 [0.705, 0.709] | 0.598 | 0.608 | 0.272 | 0.123 | 87.3% |
+
+The best adverse horizon is the 1s horizon, because even though it has the worst AUC, the PR-AUC is strongest across the board by around a 3x margin compared to the second-best, which is 0.1s.
+
+- **Best pair (5.0s fill × 1.0s adverse, day 8/9 AUC 0.60/0.61)**: Orders filling within 5 seconds are placed during sustained queue depletion. The pre-trade L2 snapshot captures a persistent imbalance state, and that persistent state predicts where the market drifts in the subsequent second.
+
+- **Worst pair (0.1s fill × 1.0s adverse, day 8/9 AUC 0.57/0.58)**: Fills within 100ms are dominated by aggressive flow hitting a thin queue. The L2 snapshot at placement has almost no causal relationship to what happens a full second later, 10x longer than the fill horizon.
+
+Both pairs degrade by a similar margin out of sample, around -0.10 AUC from val to days 8/9, so the relative ordering (persistent imbalance beats momentary depletion as a predictor) holds.
+
+One thing to note is that each fill/horizon grouping isn't drawn from the same population, as noted in the percentage of fills. Longer `h` windows will naturally have a higher share of orders that get filled, so the longer time horizons increasingly contain more predictable order flow by construction.
+
+## Composite Q Score
+
+I combined both stages into a single execution quality score:
+
+$$
+Q(X) = P(\text{fill}\mid X) \times (1-P(\text{adverse}\mid\text{fill}, X))
+$$
+In simple terms, $Q(X)$ gives the probability of a non-toxic passive fill given the current L2 state. A high $Q$ signifies a high probability of a fill that is also benign, while a low $Q$ signifies either a low probability of filling or an adverse fill.
+
+I selected the **1.0s fill × 1s adverse** horizon pair for the backtest for three reasons:
+1. Stage 1 fill AUC is the best here.
+2. For `h=5.0s`, the 92.6% fill rate means that the Stage 2 population is not really conditioned on anything since we're scoring almost every order. Compare that to the 68.5% fill rate for `h=1.0s`, which offers a much more meaningful conditioning set, one that's not so restricted that we only score rare fills but not so loose that nearly everything is scored.
+3. PR-AUC is close to the best, and combined with the better fill population, this makes it the strongest choice.
+
+## Backtest — Does Q Actually Help?
+
+This is the culmination of all the work done so far: **will this composite score improve over the naive strategy, where all passive orders are filled?**
+
+I mentioned before that all passive fills are negatively selected by construction, so this means that the naive strategy will be guaranteed to have a negative average against the mid price. This seems to hold, with the naive strategy obtaining a $\Delta$mid of -0.206 ticks.
+
+First, all test observations were sorted into quartiles by Q score, and then I measured what actually happened after each fill.
+
+**Fill rate by quartile:**
+
+| Quartile | Fill Rate |
+|----------|-----------|
+| Q1 (low Q) | 46.6% |
+| Q2 | 71.1% |
+| Q3 | 84.7% |
+| Q4 (high Q) | 88.9% |
+
+No surprises here.
+
+**Realized $\Delta$mid (1.0s adverse horizon):**
+
+| Quartile | Mean Δmid (tq) | 95% CI | std | n_fills |
+|----------|----------------|--------|---------|-|
+| Q1 (low) | -0.225 | [-0.234, -0.215] | 2.18 | 208,729 |
+| Q2 | -0.199 | [-0.207, -0.190] | 1.98 | 208,728 |
+| Q3 | -0.181 | [-0.189, -0.173] | 1.87 | 208,728 |
+| Q4 (high) | -0.222 | [-0.229, -0.214] | 1.78 | 208,729 |
+
+Q1 through Q3 maintain monotonicity, but interestingly, Q4 regresses and performs close to Q1, which is supposed to be the worst quartile.
+
+### Why Q4 Regresses
+
+If we compare the feature values of Q3 vs. Q4:
+
+| Feature | Q3 | Q4 | Δ |
+|---------|-----|-----|----|
+| Book imbalance (10-level) | +0.002 | -0.482 | -0.484 |
+| Ask order count at touch | -0.763 | -0.467 | +0.296 |
+| Mid-price Δ last 100ms | +0.038 | +0.310 | +0.271 |
+| Bid churn at touch | +0.196 | +0.457 | +0.261 |
+| Ask churn at touch | +0.057 | -0.171 | -0.228 |
+
+Q4's positive midprice delta (+0.310) combined with ask-heavy imbalance (−0.482) describes a market where aggressive buying has already occurred, where the ask side was hit, the price moved up, and now the ask has been rebuilt with new limit orders (higher order count, lower churn). The bid is churning (+0.457) as new liquidity competes for the old price.
+
+To summarize, the Q4 state shows a market that has just been swept.
+
+If we compare this to Q3, we see near-neutral imbalance (+0.002), flat momentum (+0.038σ), moderate bid churn (+0.196), and neutral ask churn (+0.057). This is a stark difference to Q4's metrics, and this describes a much more balanced market. My interpretation is that the Stage 2 model is less confident about fills being nontoxic, but the realized outcome is better because the market is stable.
+
+### Strategy Comparison
+
+Since Q2 and Q3 outperform Q4, a natural strategy is to combine only Q2+Q3:
+
+| Strategy | Mean Δmid (tq) | 95% CI |
+|----------|----------------|--------|
+| Naive passive (all fills) | −0.206 | [−0.211, −0.202] |
+| Q-middle (Q2+Q3 only) | **−0.190** | [−0.196, −0.184] |
+| Q-top half | −0.201 | [−0.207, −0.196] |
+| Q-bottom half | −0.212 | [−0.218, −0.206] |
+
+The Q-middle strategy reduces adverse price impact by ~0.016 ticks versus naive passive, with non-overlapping confidence intervals, which is statistically significant on test data. The top-half filter also beats naive but by less (0.005 ticks), and its interval barely clears.
+
+## What L2 Can and Cannot Predict
+
+We can say for certain that:
+
+### What Doesn't
+
+
+
+<Callout type="info">
+**The honest framing**: This project does not claim L2 can "approximate L3" or "reconstruct queue position." It quantifies the gap. For market participants without L3 data, this model gives a principled way to avoid the worst 25% of placement opportunities. For participants with L3, combining L2 features with true queue position would likely outperform either alone — but that's a separate experiment.
+</Callout>
+
+## Validity Checks
+
+I ran permutation tests (shuffle labels, re-train 100×, record AUC) to confirm the results aren't spurious:
+
+- **Permuted Stage 1 AUC**: ~0.505 (null distribution centered at random)
+- **Permuted Stage 2 AUC**: ~0.502
+- **Observed**: 0.84 / 0.71 — far outside the null, the signal is real.
+
+I also ran a leakage audit (t+1 shift test) to confirm no feature at timestamp T uses data from T+1. Zero leaks detected.
+
+## Limitations
+
+- **9 trading days is a narrow sample.** This represents a pretty small subsample of the overall trading timeline.
+- **ES only, buy-side only.** Only one instrument (and only one side tested at that), so generalization to other instruments or the ask cannot be assumed.
+- **Stage 2 selection bias.** Trained on fills only, applied to all observations at inference time.
+- **Models are logistic regression and random forest.** More expressive models might capture the Q4 nonlinearity — not explored.
+- **No transaction costs, market impact, or capacity constraints.** The backtest is a lower bound.
+
+## Conclusion
+
+So we can conclude that this model can be used to **exclude** bad placements, but it can't realiably tell you where the best place is. By preferring Q2+Q3, we can use it to lose on average 0.016 fewer ticks per contract on the fills we choose to take. Over lots of contracts, that adds up, and for a model that only sees L2 data, that's not too bad.
+
+**Three findings to remember:**
+
+1. L2 features predict fill probability well and adverse selection modestly.
+
+2. The composite Q score reliably identifies the worst 25% of placements but does not monotonically rank the top quartiles, so you can't predict the best ones from L2 alone.
+
+3. **A Q-filtered passive strategy improves realized execution by ~0.016 tq** over naive passive on test data: small but statistically significant, and driven entirely by excluding the worst opportunities.
+
+## References
+
+<p id="ref-1" class="ref-target">[1] Moallemi, C.C. & Yuan, K. (2017). "A Model for Queue Position Valuation in a Limit Order Book." Columbia Business School Working Paper.</p>
+
+<p id="ref-2" class="ref-target">[2] Glosten, L.R. & Milgrom, P.R. (1985). "Bid, Ask and Transaction Prices in a Specialist Market with Heterogeneously Informed Traders." *Journal of Financial Economics*, 14(1), pp. 71–100.</p>
+
+<p id="ref-3" class="ref-target">[3] Lalor, L. & Swishchuk, A. (2024). "Market Simulation under Adverse Selection." arXiv:2409.12721.</p>
+
+
+## Appendix
+<Appendix id="appendix-a" title="Appendix A: Negative Selection of Passive Fills">
+Passive fills being negatively selected on average has been empircally confirmed numerous times by previous research papers.
+
+**Glosten & Milgrom (1986)** <a href="#ref-2" class="citation">[2]</a> applied and formalized the adverse selection concept specifically to market microstructure. They showed that a market maker facing a mix of informed and uninformed traders must set bid-ask spreads wide enough to compensate for the expected losses from trading with more information, which is why the additional widening of the spread beyond pure order processing cost is given the name adverse selection. The result becomes a positive bid-ask spread persisting, even when the market maker is risk-neutral and makes zero expected profits.
+
+This mechanism directly explains why passive fills are negatively selected by construction: an informed trader knows the price is about to rise, so they submit market buy orders, hitting your passive bid. The price then rises against your position. The spread exists to compensate for this expected loss, and there is no equilibrium in which passive fills are, on average, profitable against the mid, because if they were, everybody would post passively and no one would take liquidity then.
+
+**Lalor & Swishchuk (2024)** <a href="#ref-3" class="citation">[3]</a> validate this framing empirically on ES, NQ, CL, and ZN futures on CME and provide empirical evidence that adverse fills occur in the majority of trade executions. They define adverse fills as a form of adverse selection that occurs when a passive limit order is executed at a disadvantageous price; specifically, immediately after execution, the new trade position is out of the money when marked-to-market. They demonstrate that failing to account for them leads to significant misrepresentation of strategy performance, since standard simulation environments unrealistically assume fills occur at the front of the queue.
+</Appendix>
+
+<Appendix id="appendix-b" title="Appendix B: Dataset Details">
+</Appendix>
+<Appendix id="appendix-c" title="Appendix C: Feature Engineering Details">
+All 78 features are computed from MBP-10 (L2) orderbook snapshots (best 10 bid-asks). Prices are in `price_tq`, the number of ticks. Sizes and counts are z-score normalized per day. Features fall into four categories:
+
+1. **Order Book Depth Profile** — raw per-level prices, sizes, and order counts
+2. **Aggregate Book Metrics** — summary statistics derived from the full book
+3. **Price Trend and Volatility** — recent midprice movement and variance
+4. **Touch Activity** — L2-approximated order-flow features at the inside quote
+
+---
+
+## B.1 Order Book Depth Profile (60 features)
+
+| Feature(s) | Description | Rationale |
+|---|---|---|
+| `bid_px_{00–09}` | Bid price at level `i` | — |
+| `ask_px_{00–09}` | Ask price at level `i` | — |
+| `bid_sz_{00–09}` | Total quantity at bid level `i` | — |
+| `ask_sz_{00–09}` | Total quantity at ask level `i` | — |
+| `bid_ct_{00–09}` | Number of distinct orders at bid level `i` | — |
+| `ask_ct_{00–09}` | Number of distinct orders at ask level `i` | — |
+
+**Note on aliases:** `bid_size_tq` and `ask_size_tq` (listed under Aggregate Book Metrics below) are identical to `bid_sz_00` and `ask_sz_00` respectively. They appear as separate columns from a legacy naming convention but carry no additional information.
+
+---
+
+## B.2 Aggregate Book Metrics (6 features)
+
+Derived quantities that summarize the full book or the inside quote into a single number.
+
+| Feature | Description | Rationale |
+|---|---|---|
+| `spread_tq` | Best ask minus best bid, in `price_tq` | — |
+| `bid_size_tq` | Quantity at best bid (`bid_sz_00` alias) | — |
+| `ask_size_tq` | Quantity at best ask (`ask_sz_00` alias) | — |
+| `midprice_tq` | (best_bid + best_ask) / 2, in `price_tq` | Used as the reference for computing price moves (deltas) and volatility. Z-scored per day so the model sees relative position, not absolute price levels. |
+| `microprice_tq` | Volume-weighted midprice: (P_bid × V_ask + P_ask × V_bid) / (V_bid + V_ask) | The microprice tilts the midprice toward the side with thinner queue depth. If the ask has 100 contracts and the bid has 10, the microprice is closer to the ask, reflecting that a small buy order would move the price more than a small sell. It is a leading indicator of short-term price pressure. |
+| `imbalance_10` | (V_bid − V_ask) / (V_bid + V_ask), summed across all 10 levels | Signed book imbalance in [−1, +1]. +1 means the bid side has all the visible volume (extreme buy pressure); −1 means all volume is on the ask (extreme sell pressure). Imbalance is the strongest single-period predictor of the next price move: when one side dominates, the next market order is more likely to clear that side and move the price. |
+
+---
+
+## B.3 Price Trend and Volatility (4 features)
+
+Time-series features that capture recent price dynamics.
+
+| Feature | Description | Rationale |
+|---|---|---|
+| `midprice_delta_100000000ns` | Midprice change over the last 100 ms, in `price_tq` | — |
+| `midprice_delta_1000000000ns` | Midprice change over the last 1 second, in `price_tq` | — |
+| `midprice_delta_5000000000ns` | Midprice change over the last 5 seconds, in `price_tq` | — |
+| `volatility_5s` | Standard deviation of midprice changes over 5 seconds (rolling) | Recent realized volatility. Higher volatility means faster queue movement, larger adverse moves, and more uncertainty about the fill price. |
+
+---
+
+## B.4 Touch-Level Activity (8 features)
+
+These features approximate MBO-derived order-flow metrics (cancel rates, fill volumes, time since last fill) using only MBP-10 snapshot differences. Quantity decreases at the touch capture both fills and cancellations indistinguishably.
+
+Each feature exists for both the bid and ask side. The suffix `_s` indicates a 1-second rolling window.
+
+| Feature | Description | Rationale |
+|---|---|---|
+| `touch_dec_bid_s` | Total quantity removed at the best-bid level in the last 1s (fills + cancels) | — |
+| `touch_inc_bid_s` | Total quantity added at the best-bid level in the last 1s | — |
+| `touch_churn_bid` | `touch_dec_bid_s / (touch_dec_bid_s + touch_inc_bid_s)` | The fraction of touch activity that is removal (fills + cancels) rather than addition. Values near 1 mean the queue is shrinking rapidly (orders are being consumed). Values near 0 mean the queue is growing (orders are piling up). This ratio is an approximation for queue position advancement rate. |
+| `since_touch_change_bid_ns` | Nanoseconds since the last quantity change at the best-bid level | — |
+| `touch_dec_ask_s` | Same as `touch_dec_bid_s` for the ask side | — |
+| `touch_inc_ask_s` | Same as `touch_inc_bid_s` for the ask side | — |
+| `touch_churn_ask` | Same as `touch_churn_bid` for the ask side | — |
+| `since_touch_change_ask_ns` | Same as `since_touch_change_bid_ns` for the ask side | — |
+</Appendix>
+
+<Appendix id="appendix-d" title="Appendix D: Why Fill-at-Best-Bid as Target?">
+Picking what target to use was very crucial for this project. A natural selection would be something like `fill_within_K_events`, where we predict whether a fill occurs within some K number of events. The problem with this selection is that it doesn't account for volatility: K=100 might mean 50ms in one regime and \<1ms in another.
+
+Other temporal targets were rejected:
+* Fill probability at a fixed time (e.g., "What is the probability this order is filled at time T?"): fill events are discrete in nature
+* Time-to-fill regression (predicting the average time it takes for an order to be filled): the distribution is inherently heavy-tailed and multimodal, making evaluation and point estimation extremely hard and unreliable.
+</Appendix>

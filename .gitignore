@@ -29,3 +29,12 @@ portfolio/.next
 portfolio/test-results
 opencode.json
 .playwright-mcp/page-2026-06-26T09-18-07-210Z.yml
+adr/001-target-variable.md
+adr/002-data-pipeline.md
+adr/excluding-sunday.md
+adr/portfolio-writeup.md
+adr/q-score.md
+adr/research-notes.md
+adr/writeup-skeleton.md
+adverse-selection-model.md
+l2-simulator-summer.md

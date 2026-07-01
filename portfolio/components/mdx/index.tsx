@@ -4,6 +4,7 @@ import Figure from "./Figure";
 import Chart from "./Chart";
 import Diagram from "./Diagram";
 import Expandable from "./Expandable";
+import Appendix from "./Appendix";
 
 export const mdxComponents = {
   CodeBlock,
@@ -12,6 +13,7 @@ export const mdxComponents = {
   Chart,
   Diagram,
   Expandable,
+  Appendix,
   // Map standard HTML block elements to custom styles via wrapper components
   pre: ({ children }: { children: React.ReactNode }) => (
     <div className="my-6 rounded-lg border border-border-subtle overflow-hidden bg-surface-secondary">

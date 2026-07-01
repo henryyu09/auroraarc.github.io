@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { compileMDX } from "next-mdx-remote/rsc";
 import remarkMath from "remark-math";
+import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
 import { getProjectBySlug, getAllProjects } from "@/lib/projects";
 import { mdxComponents } from "@/components/mdx";
@@ -38,7 +39,7 @@ export default async function ProjectPage({ params }: PageProps) {
     options: {
       blockJS: false,
       mdxOptions: {
-        remarkPlugins: [remarkMath],
+        remarkPlugins: [remarkGfm, remarkMath],
         rehypePlugins: [rehypeKatex],
       },
     },
